@@ -524,21 +524,9 @@ class MfuConfig:
 
 @dataclass(frozen=True)
 class FreezePolicy:
-    """Engine config for freezing model parameters.
-
-    Two complementary selectors; a parameter is frozen when any of them
-    selects it:
-
-    - ``parameter_groups``: semantic groups the model declares via
-      ``get_parameter_groups()`` (``vision_tower``, ``multi_modal_projector``,
-      ``language_model``, ``all``).
-    - ``patterns``: wildcard patterns matched against every parameter's
-      model FQN with the same semantics as parallel plans (``match_fqn``):
-      ``*`` matches within one dot-separated segment, ``**`` crosses
-      segments, e.g. ``model.layers.*.mlp.**`` or ``lm_head.weight``.
-      PEFT wrapper prefixes are stripped before matching, so patterns are
-      written against base-model FQNs and behave identically under LoRA.
-    """
+    """Freeze parameters by semantic group and/or FQN wildcard pattern
+    ('*' within one segment, '**' across segments; matched on base-model
+    FQNs, so LoRA adapters stay trainable unless a pattern selects them)."""
 
     parameter_groups: tuple[ParameterGroup, ...] = ()
     patterns: tuple[str, ...] = ()
@@ -552,12 +540,7 @@ class FreezePolicy:
         cls,
         entries: Iterable[ParameterGroup | str] | ParameterGroup | str | None,
     ) -> FreezePolicy:
-        """Build a policy from mixed group names and FQN patterns.
-
-        Entries equal to a ``ParameterGroup`` value (``all``,
-        ``vision_tower``, ...) become semantic groups; any other string is
-        treated as an FQN pattern. Order is preserved and duplicates dropped.
-        """
+        """Build a policy from mixed group names and FQN patterns."""
         if entries is None:
             return cls()
         if isinstance(entries, (ParameterGroup, str)):
@@ -1373,7 +1356,6 @@ def _build_freeze_policy(fields: Mapping[str, Any]) -> FreezePolicy:
         )
         if enabled
     ]
-    # patterns is YAML-only; there is no CLI flag for it.
     patterns = _as_entry_list(freeze_d.get("patterns"))
     return FreezePolicy.from_list([*groups, *patterns])
 

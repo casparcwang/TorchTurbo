@@ -442,9 +442,7 @@ class TorchTurboEngine:
             )
 
     def _freeze_patterns(self, model: nn.Module, policy: FreezePolicy) -> None:
-        # Per-pattern counts are reported independently; a parameter selected
-        # by several patterns is frozen once (requires_grad_ is idempotent)
-        # and counted once per matching pattern.
+        # A parameter matched by several patterns is frozen once, counted per pattern.
         matched: dict[str, int] = {pattern: 0 for pattern in policy.patterns}
         element_counts: dict[str, int] = {pattern: 0 for pattern in policy.patterns}
         for name, param in model.named_parameters():

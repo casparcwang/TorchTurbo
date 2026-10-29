@@ -97,12 +97,7 @@ class _GroupedLayeredModel(_LayeredModel):
 
 
 class _PeftLikeModel(nn.Module):
-    """Mimics PEFT nesting: ``base_model.model.`` prefix and ``base_layer``.
-
-    The q_proj module carries the wrapped base weight plus LoRA adapter
-    weights, mirroring ``base_layer.weight`` / ``lora_A.default.weight`` /
-    ``lora_B.default.weight`` under a real PeftModel.
-    """
+    """Mimics PEFT naming: ``base_model.model.`` prefix, ``base_layer`` and LoRA adapters."""
 
     def __init__(self):
         super().__init__()
@@ -148,8 +143,7 @@ def test_pattern_star_stays_within_one_segment():
 
     model = _LayeredModel()
 
-    # 'model.layers.*.weight' cannot cross the q_proj/mlp submodule segment,
-    # so it matches nothing even though deeper weights exist.
+    # '*' cannot cross the q_proj/mlp segment, so this pattern matches nothing.
     with pytest.raises(ValueError, match="matched no parameters"):
         _make_engine()._apply_freeze_policy(
             model, FreezePolicy(patterns=("model.layers.*.weight",))
@@ -223,8 +217,7 @@ def test_patterns_can_freeze_base_weights_and_selected_lora_weights():
 
     model = _PeftLikeModel()
 
-    # Freeze the wrapped base weight plus only lora_B, leaving lora_A
-    # trainable: both live in the PEFT-stripped FQN space.
+    # Freeze the base weight plus only lora_B; lora_A stays trainable.
     _make_engine()._apply_freeze_policy(
         model,
         FreezePolicy(

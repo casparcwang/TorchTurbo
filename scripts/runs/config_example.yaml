@@ -132,11 +132,8 @@ engine_config:
     vision_tower: false
     multi_modal_projector: false
     language_model: false
-    # FQN wildcard patterns to freeze arbitrary parameters, matched with
-    # parallel-plan semantics: '*' stays within one dot-separated segment,
-    # '**' crosses segments. YAML-only setting (no CLI flag). Base-model FQNs
-    # are matched, so LoRA adapters stay trainable unless a pattern explicitly
-    # selects them. A single pattern string is also accepted.
+    # YAML-only FQN wildcard patterns ('*' one segment, '**' multiple) to
+    # freeze arbitrary parameters, matched on base-model FQNs.
     # patterns:
     #   - "model.layers.*.self_attn.**"
     #   - "lm_head.weight"
