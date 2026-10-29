@@ -7,9 +7,10 @@ LPT-packed over all ranks, encoded through the untouched tower, and fanned out
 to every member of the owning group. The hooks ride the tower's forward, so a
 balanced step needs every rank to enter the tower exactly once; training
 frameworks keep that invariant by giving media-less batches a dummy image.
-When the world pool holds fewer media than ranks, the packing leaves some
-ranks empty-handed, and those encode a model-defined dummy whose rows no
-restore range touches. Under ``torch.no_grad`` both hooks step aside and the
+When the world pool holds fewer media than ranks, packing would leave some
+ranks empty-handed and their zero-row exchanges trip the NPU alltoallv
+kernel, so such steps skip balancing entirely and every rank encodes its own
+media locally instead. Under ``torch.no_grad`` both hooks step aside and the
 local path runs unchanged.
 
 Each output's fan-out is two ``index_select`` calls around comm.py's differentiable
@@ -300,6 +301,9 @@ class _VisionBalanceState:
         batch = self.io.read_inputs(module, args, kwargs)
         self._validate_batch(batch)
         plan = self._build_plan(module, batch)
+        if plan is None:
+            self._plan = None
+            return None
         call = self.io.write_inputs(args, kwargs, plan.assigned_batch)
         self._plan = plan
         return call
@@ -358,7 +362,7 @@ class _VisionBalanceState:
                     "one nonnegative row count per medium"
                 )
 
-    def _build_plan(self, module: nn.Module, batch: VisionBatch) -> _StepPlan:
+    def _build_plan(self, module: nn.Module, batch: VisionBatch) -> _StepPlan | None:
         """Assign whole media and build a restore plan for each output stream."""
         rank = dist.get_rank()
         world = dist.get_world_size()
@@ -366,6 +370,18 @@ class _VisionBalanceState:
         output_names = tuple(batch.output_lengths)
         metadata = self._gather_metadata(batch)
         pool = _MediaPool.from_metadata(metadata, output_names, self.mode)
+        if len(pool.media) < world:
+            # Fewer media than ranks leaves some ranks empty-handed, and
+            # their zero-row buffers make the NPU alltoallv kernel reject
+            # the exchange. Leave such steps unbalanced: every rank encodes
+            # its own media (a framework-supplied dummy when media-less).
+            logger.debug(
+                "[rank %d] vision balance skipped: %d pooled media for %d ranks",
+                rank,
+                len(pool.media),
+                world,
+            )
+            return None
         pool.assign_owners(world)
 
         mine = pool.assigned_to(rank)
